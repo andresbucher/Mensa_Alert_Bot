@@ -117,9 +117,20 @@ def _extract_hits_from_html(
     cantine_name: str,
     special_keywords: list[str],
 ) -> list[SpecialMenuHit]:
+    all_entries = _extract_menu_entries_from_html(html_text, cantine_name)
+    return [
+        entry for entry in all_entries
+        if _menu_matches_any_keyword(entry.menu_name, special_keywords)
+    ]
+
+
+def _extract_menu_entries_from_html(
+    html_text: str,
+    cantine_name: str,
+) -> list[SpecialMenuHit]:
     soup = BeautifulSoup(html_text, "html.parser")
     week_start = _extract_week_start(soup)
-    hits: list[SpecialMenuHit] = []
+    entries: list[SpecialMenuHit] = []
 
     for weekday_section in _iter_weekday_sections(soup):
         day_node = weekday_section.select_one("h2.cp-menu__dayofweek")
@@ -132,22 +143,39 @@ def _extract_hits_from_html(
             if not menu_title:
                 continue
 
-            if _menu_matches_any_keyword(menu_title, special_keywords):
-                hits.append(
-                    SpecialMenuHit(
-                        menu_name=menu_title,
-                        date_label=date_label,
-                        cantine_name=cantine_name,
-                    )
+            entries.append(
+                SpecialMenuHit(
+                    menu_name=menu_title,
+                    date_label=date_label,
+                    cantine_name=cantine_name,
                 )
+            )
 
-    return hits
+    return entries
 
 
 def _extract_hits_from_eth_api(
     html_text: str,
     cantine_name: str,
     special_keywords: list[str],
+    timezone_name: str,
+    week_offset_weeks: int,
+) -> list[SpecialMenuHit]:
+    all_entries = _extract_menu_entries_from_eth_api(
+        html_text=html_text,
+        cantine_name=cantine_name,
+        timezone_name=timezone_name,
+        week_offset_weeks=week_offset_weeks,
+    )
+    return [
+        entry for entry in all_entries
+        if _menu_matches_any_keyword(entry.menu_name, special_keywords)
+    ]
+
+
+def _extract_menu_entries_from_eth_api(
+    html_text: str,
+    cantine_name: str,
     timezone_name: str,
     week_offset_weeks: int,
 ) -> list[SpecialMenuHit]:
@@ -186,7 +214,7 @@ def _extract_hits_from_eth_api(
     except (ValueError, requests.RequestException):
         return []
 
-    hits: list[SpecialMenuHit] = []
+    entries: list[SpecialMenuHit] = []
     week_entries = payload.get("weekly-rota-array", [])
     for week_entry in week_entries:
         day_entries = week_entry.get("day-of-week-array", [])
@@ -211,16 +239,75 @@ def _extract_hits_from_eth_api(
                         if not menu_title:
                             continue
 
-                        if _menu_matches_any_keyword(menu_title, special_keywords):
-                            hits.append(
-                                SpecialMenuHit(
-                                    menu_name=menu_title,
-                                    date_label=date_label,
-                                    cantine_name=cantine_name,
-                                )
+                        entries.append(
+                            SpecialMenuHit(
+                                menu_name=menu_title,
+                                date_label=date_label,
+                                cantine_name=cantine_name,
                             )
+                        )
 
-    return hits
+    return entries
+
+
+def _fetch_online_menu_entries_for_source(
+    cantine_name: str,
+    base_url: str,
+    timezone_name: str,
+    week_offset_weeks: int,
+) -> list[SpecialMenuHit]:
+    url = _build_week_url(base_url, timezone_name, week_offset_weeks)
+
+    try:
+        response = requests.get(url, headers=HTTP_HEADERS, timeout=30)
+        response.raise_for_status()
+    except requests.RequestException:
+        return []
+
+    entries = _extract_menu_entries_from_html(
+        html_text=response.text,
+        cantine_name=cantine_name,
+    )
+    if entries:
+        return entries
+
+    return _extract_menu_entries_from_eth_api(
+        html_text=response.text,
+        cantine_name=cantine_name,
+        timezone_name=timezone_name,
+        week_offset_weeks=week_offset_weeks,
+    )
+
+
+def find_online_menus_for_week(
+    config: BotConfig,
+    week_offset_weeks: int = 0,
+) -> list[SpecialMenuHit]:
+    source_list = config.cantine_sources or [
+        ("Polyterasse", POLYTERRASSE_URL_TEMPLATE),
+        ("Klausius Mensa", KLAUSIUS_MENSA_URL_TEMPLATE),
+    ]
+
+    entries: list[SpecialMenuHit] = []
+    seen: set[tuple[str, str, str]] = set()
+
+    for cantine_name, base_url in source_list:
+        if not _is_allowed_cantine(cantine_name, config.cantine_names):
+            continue
+
+        for entry in _fetch_online_menu_entries_for_source(
+            cantine_name=cantine_name,
+            base_url=base_url,
+            timezone_name=config.timezone,
+            week_offset_weeks=week_offset_weeks,
+        ):
+            key = (entry.menu_name, entry.date_label, entry.cantine_name)
+            if key in seen:
+                continue
+            seen.add(key)
+            entries.append(entry)
+
+    return entries
 
 
 def _current_week_monday_iso(timezone_name: str, week_offset_weeks: int = 0) -> str:
@@ -275,27 +362,15 @@ def find_special_menus_for_week(
         if not _is_allowed_cantine(cantine_name, config.cantine_names):
             continue
 
-        url = _build_week_url(base_url, config.timezone, week_offset_weeks)
-
-        try:
-            response = requests.get(url, headers=HTTP_HEADERS, timeout=30)
-            response.raise_for_status()
-        except requests.RequestException:
-            continue
-
-        html_hits = _extract_hits_from_html(
-            html_text=response.text,
-            cantine_name=cantine_name,
-            special_keywords=config.special_keywords,
-        )
-        if not html_hits:
-            html_hits = _extract_hits_from_eth_api(
-                html_text=response.text,
+        html_hits = [
+            entry for entry in _fetch_online_menu_entries_for_source(
                 cantine_name=cantine_name,
-                special_keywords=config.special_keywords,
+                base_url=base_url,
                 timezone_name=config.timezone,
                 week_offset_weeks=week_offset_weeks,
             )
+            if _menu_matches_any_keyword(entry.menu_name, config.special_keywords)
+        ]
 
         for hit in html_hits:
             key = (hit.menu_name, hit.date_label, hit.cantine_name)

@@ -73,7 +73,8 @@ def _parse_cantine_sources(value: str | None) -> list[tuple[str, str]]:
 
 
 def load_config() -> BotConfig:
-    load_dotenv()
+    # Always refresh from .env so runtime config edits are picked up reliably.
+    load_dotenv(override=True)
 
     token = os.getenv("TELEGRAM_BOT_TOKEN", "").strip()
     if not token:

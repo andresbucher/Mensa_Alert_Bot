@@ -11,13 +11,13 @@ jobs:
     env:
       TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
       ALERT_CHAT_ID: ${{ secrets.ALERT_CHAT_ID }}
-      SPECIAL_KEYWORDS: ${{ secrets.SPECIAL_KEYWORDS }}
-      CANTINE_NAMES: ${{ secrets.CANTINE_NAMES }}
-      CANTINE_SOURCES: ${{ secrets.CANTINE_SOURCES }}
-      CHECK_WEEKDAY: "0"
-      CHECK_TIME: "08:00"
-      TIMEZONE: "Europe/Zurich"
-      RUN_WINDOW_MINUTES: "60"
+      SPECIAL_KEYWORDS: ${{ vars.SPECIAL_KEYWORDS }}
+      CANTINE_NAMES: ${{ vars.CANTINE_NAMES }}
+      CANTINE_SOURCES: ${{ vars.CANTINE_SOURCES }}
+      CHECK_WEEKDAY: ${{ vars.CHECK_WEEKDAY || '0' }}
+      CHECK_TIME: ${{ vars.CHECK_TIME || '08:00' }}
+      TIMEZONE: ${{ vars.TIMEZONE || 'Europe/Zurich' }}
+      RUN_WINDOW_MINUTES: ${{ vars.RUN_WINDOW_MINUTES || '60' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4

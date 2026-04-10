@@ -5,7 +5,7 @@ from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 from config import load_config
-from menu_checker import find_special_menus_for_week
+from menu_checker import find_online_menus_for_week, find_special_menus_for_week
 from state_store import BotStateStore
 
 
@@ -55,6 +55,26 @@ def format_alert(menu_name: str, date_label: str, cantine_name: str) -> str:
     )
 
 
+def _chunk_text_lines(lines: list[str], max_chars: int = 3500) -> list[str]:
+    chunks: list[str] = []
+    current = ""
+
+    for line in lines:
+        candidate = f"{current}\n{line}" if current else line
+        if len(candidate) <= max_chars:
+            current = candidate
+            continue
+
+        if current:
+            chunks.append(current)
+        current = line
+
+    if current:
+        chunks.append(current)
+
+    return chunks
+
+
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     await update.message.reply_text(
         "Mensa bot is running. Use /setchat in your target chat to receive alerts."
@@ -81,7 +101,8 @@ async def testalert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 
 async def runcheck(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    config = context.application.bot_data["config"]
+    config = load_config()
+    context.application.bot_data["config"] = config
     try:
         week_offset = _parse_runcheck_week_offset(context.args)
     except ValueError as exc:
@@ -106,8 +127,38 @@ async def runcheck(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         )
 
 
+async def debugmenus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = load_config()
+    context.application.bot_data["config"] = config
+
+    try:
+        week_offset = _parse_runcheck_week_offset(context.args)
+    except ValueError as exc:
+        await update.message.reply_text(str(exc))
+        return
+
+    entries = find_online_menus_for_week(config, week_offset_weeks=week_offset)
+    if not entries:
+        await update.message.reply_text(
+            "No online menu entries found for the selected week."
+        )
+        return
+
+    lines = [
+        f"{entry.date_label} | {entry.cantine_name} | {entry.menu_name}"
+        for entry in entries
+    ]
+    header = (
+        f"Found {len(entries)} online menu entries for week_offset={week_offset}."
+    )
+    for chunk in _chunk_text_lines(lines):
+        await update.message.reply_text(f"{header}\n{chunk}")
+        header = ""
+
+
 async def weekly_check(context: ContextTypes.DEFAULT_TYPE) -> None:
-    config = context.application.bot_data["config"]
+    config = load_config()
+    context.application.bot_data["config"] = config
     state_store: BotStateStore = context.application.bot_data["state_store"]
     alert_chat_id = state_store.get_alert_chat_id(config.default_chat_id)
 
@@ -145,6 +196,7 @@ def main() -> None:
     app.add_handler(CommandHandler("setchat", setchat))
     app.add_handler(CommandHandler("testalert", testalert))
     app.add_handler(CommandHandler("runcheck", runcheck))
+    app.add_handler(CommandHandler("debugmenus", debugmenus))
 
     app.job_queue.run_daily(
         weekly_check,
