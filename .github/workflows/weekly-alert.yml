@@ -19,6 +19,7 @@ jobs:
       TIMEZONE: ${{ vars.TIMEZONE || 'Europe/Zurich' }}
       RUN_WINDOW_MINUTES: ${{ vars.RUN_WINDOW_MINUTES || '60' }}
       FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
       - name: Checkout
         uses: actions/checkout@v5
