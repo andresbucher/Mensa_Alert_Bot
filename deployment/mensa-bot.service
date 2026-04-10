@@ -1,0 +1,15 @@
+[Unit]
+Description=Mensa Telegram Bot
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/mensa-bot
+EnvironmentFile=/opt/mensa-bot/.env
+ExecStart=/opt/mensa-bot/.venv/bin/python /opt/mensa-bot/main.py
+Restart=always
+RestartSec=5
+User=botuser
+
+[Install]
+WantedBy=multi-user.target

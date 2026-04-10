@@ -1,0 +1,34 @@
+name: Weekly Mensa Alert
+
+on:
+  schedule:
+    - cron: "0 * * * 1"
+  workflow_dispatch:
+
+jobs:
+  run-weekly-check:
+    runs-on: ubuntu-latest
+    env:
+      TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+      ALERT_CHAT_ID: ${{ secrets.ALERT_CHAT_ID }}
+      SPECIAL_KEYWORDS: ${{ secrets.SPECIAL_KEYWORDS }}
+      CANTINE_NAMES: ${{ secrets.CANTINE_NAMES }}
+      CANTINE_SOURCES: ${{ secrets.CANTINE_SOURCES }}
+      CHECK_WEEKDAY: "0"
+      CHECK_TIME: "08:00"
+      TIMEZONE: "Europe/Zurich"
+      RUN_WINDOW_MINUTES: "60"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run weekly checker
+        run: python weekly_runner.py
