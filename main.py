@@ -1,11 +1,12 @@
 import logging
 from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from telegram import Update
 from telegram.ext import Application, CommandHandler, ContextTypes
 
 from config import load_config
-from menu_checker import find_online_menus_for_week, find_special_menus_for_week
+from menu_checker import SpecialMenuHit, find_online_menus_for_week, find_special_menus_for_week
 from state_store import BotStateStore
 
 
@@ -73,6 +74,14 @@ def _chunk_text_lines(lines: list[str], max_chars: int = 3500) -> list[str]:
         chunks.append(current)
 
     return chunks
+
+
+def _filter_entries_for_today(
+    entries: list[SpecialMenuHit],
+    timezone_name: str,
+) -> list[SpecialMenuHit]:
+    today_iso = datetime.now(ZoneInfo(timezone_name)).date().isoformat()
+    return [entry for entry in entries if f"({today_iso})" in entry.date_label]
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
@@ -156,6 +165,29 @@ async def debugmenus(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None
         header = ""
 
 
+async def menu(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    config = load_config()
+    context.application.bot_data["config"] = config
+
+    entries = find_online_menus_for_week(config, week_offset_weeks=0)
+    todays_entries = _filter_entries_for_today(entries, config.timezone)
+
+    if not todays_entries:
+        await update.message.reply_text(
+            "No online menu entries found for today."
+        )
+        return
+
+    lines = [
+        f"{entry.cantine_name} | {entry.menu_name}"
+        for entry in todays_entries
+    ]
+    header = f"Today's menus ({len(todays_entries)}):"
+    for chunk in _chunk_text_lines(lines):
+        await update.message.reply_text(f"{header}\n{chunk}")
+        header = ""
+
+
 async def weekly_check(context: ContextTypes.DEFAULT_TYPE) -> None:
     config = load_config()
     context.application.bot_data["config"] = config
@@ -197,6 +229,7 @@ def main() -> None:
     app.add_handler(CommandHandler("testalert", testalert))
     app.add_handler(CommandHandler("runcheck", runcheck))
     app.add_handler(CommandHandler("debugmenus", debugmenus))
+    app.add_handler(CommandHandler("menu", menu))
 
     app.job_queue.run_daily(
         weekly_check,
