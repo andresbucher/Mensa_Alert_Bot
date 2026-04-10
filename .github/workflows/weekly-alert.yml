@@ -18,14 +18,37 @@ jobs:
       CHECK_TIME: ${{ vars.CHECK_TIME || '08:00' }}
       TIMEZONE: ${{ vars.TIMEZONE || 'Europe/Zurich' }}
       RUN_WINDOW_MINUTES: ${{ vars.RUN_WINDOW_MINUTES || '60' }}
+      FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Set up Python
-        uses: actions/setup-python@v5
+        uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
+      - name: Validate workflow configuration
+        shell: bash
+        run: |
+          fail=0
+          if [ -z "${TELEGRAM_BOT_TOKEN}" ]; then
+            echo "::error::Missing secret TELEGRAM_BOT_TOKEN"
+            fail=1
+          fi
+          if [ -z "${ALERT_CHAT_ID}" ]; then
+            echo "::error::Missing secret ALERT_CHAT_ID"
+            fail=1
+          fi
+          if [ -z "${SPECIAL_KEYWORDS}" ]; then
+            echo "::warning::Variable SPECIAL_KEYWORDS is empty; no menu matches will be sent."
+          fi
+          if [ -z "${CANTINE_SOURCES}" ]; then
+            echo "::warning::Variable CANTINE_SOURCES is empty; defaults from code will be used."
+          fi
+          if [ "$fail" -ne 0 ]; then
+            exit 1
+          fi
 
       - name: Install dependencies
         run: pip install -r requirements.txt
