@@ -14,6 +14,9 @@ logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
 )
+# Avoid logging full Telegram request URLs (which include the bot token).
+logging.getLogger("httpx").setLevel(logging.WARNING)
+logging.getLogger("telegram").setLevel(logging.INFO)
 LOGGER = logging.getLogger(__name__)
 
 
