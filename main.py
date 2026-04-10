@@ -19,6 +19,34 @@ logging.getLogger("telegram").setLevel(logging.INFO)
 LOGGER = logging.getLogger(__name__)
 
 
+def _parse_runcheck_week_offset(args: list[str]) -> int:
+    if not args:
+        return 0
+
+    value = args[0].strip().lower()
+    aliases = {
+        "this": 0,
+        "current": 0,
+        "last": -1,
+        "previous": -1,
+        "next": 1,
+    }
+    if value in aliases:
+        return aliases[value]
+
+    try:
+        offset = int(value)
+    except ValueError as exc:
+        raise ValueError(
+            "Usage: /runcheck [week_offset]. Examples: /runcheck, /runcheck -1, /runcheck last"
+        ) from exc
+
+    if offset < -12 or offset > 12:
+        raise ValueError("week_offset must be between -12 and 12")
+
+    return offset
+
+
 def format_alert(menu_name: str, date_label: str, cantine_name: str) -> str:
     return (
         f"{menu_name.upper()} ALERT\n"
@@ -54,11 +82,17 @@ async def testalert(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
 
 async def runcheck(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     config = context.application.bot_data["config"]
-    hits = find_special_menus_for_week(config)
+    try:
+        week_offset = _parse_runcheck_week_offset(context.args)
+    except ValueError as exc:
+        await update.message.reply_text(str(exc))
+        return
+
+    hits = find_special_menus_for_week(config, week_offset_weeks=week_offset)
 
     if not hits:
         await update.message.reply_text(
-            "No configured special menus found in online sources or local HTML files."
+            "No configured special menus found in online sources or local HTML files for the selected week."
         )
         return
 

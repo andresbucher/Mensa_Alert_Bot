@@ -2,6 +2,7 @@ from dataclasses import dataclass
 from datetime import datetime, timedelta
 from pathlib import Path
 import re
+from typing import Any
 from urllib.parse import parse_qsl, urlencode, urlparse, urlunparse
 from zoneinfo import ZoneInfo
 
@@ -35,6 +36,15 @@ WEEKDAY_OFFSET = {
     "Fr": 4,
     "Sa": 5,
     "So": 6,
+}
+
+HTTP_HEADERS = {
+    "User-Agent": (
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+        "AppleWebKit/537.36 (KHTML, like Gecko) "
+        "Chrome/124.0.0.0 Safari/537.36"
+    ),
+    "Accept-Language": "de-CH,de;q=0.9,en;q=0.8",
 }
 
 
@@ -134,13 +144,96 @@ def _extract_hits_from_html(
     return hits
 
 
-def _current_week_monday_iso(timezone_name: str) -> str:
+def _extract_hits_from_eth_api(
+    html_text: str,
+    cantine_name: str,
+    special_keywords: list[str],
+    timezone_name: str,
+    week_offset_weeks: int,
+) -> list[SpecialMenuHit]:
+    soup = BeautifulSoup(html_text, "html.parser")
+    app_root = soup.select_one("#gastro-app")
+    if app_root is None:
+        return []
+
+    base_url = (app_root.get("data-baseurl") or "").strip()
+    facility = (app_root.get("data-facility") or "").strip()
+    locale = (app_root.get("data-locale") or "de").strip() or "de"
+    if not base_url or not facility:
+        return []
+
+    week_monday_iso = _current_week_monday_iso(timezone_name, week_offset_weeks)
+    valid_after = datetime.strptime(week_monday_iso, "%Y-%m-%d")
+    valid_before = valid_after + timedelta(days=7)
+
+    try:
+        response = requests.get(
+            f"{base_url.rstrip('/')}/weeklyrotas",
+            params={
+                "client-id": "ethz-wcms",
+                "lang": locale,
+                "rs-first": 0,
+                "rs-size": 50,
+                "valid-after": valid_after.strftime("%Y-%m-%d"),
+                "valid-before": valid_before.strftime("%Y-%m-%d"),
+                "facility": int(facility),
+            },
+            headers=HTTP_HEADERS,
+            timeout=30,
+        )
+        response.raise_for_status()
+        payload: dict[str, Any] = response.json()
+    except (ValueError, requests.RequestException):
+        return []
+
+    hits: list[SpecialMenuHit] = []
+    week_entries = payload.get("weekly-rota-array", [])
+    for week_entry in week_entries:
+        day_entries = week_entry.get("day-of-week-array", [])
+        for day_entry in day_entries:
+            day_code = day_entry.get("day-of-week-code")
+            day_short = day_entry.get("day-of-week-desc-short", "?")
+            if isinstance(day_code, int) and 1 <= day_code <= 7:
+                target_date = valid_after + timedelta(days=(day_code - 1))
+                date_label = f"{day_short} ({target_date.date().isoformat()})"
+            else:
+                date_label = str(day_short)
+
+            for opening_hour in day_entry.get("opening-hour-array", []):
+                for meal_time in opening_hour.get("meal-time-array", []):
+                    for line in meal_time.get("line-array", []):
+                        meal = line.get("meal", {})
+                        if not isinstance(meal, dict):
+                            continue
+
+                        raw_name = str(meal.get("name", "")).strip()
+                        menu_title = _clean_menu_title(raw_name)
+                        if not menu_title:
+                            continue
+
+                        if _menu_matches_any_keyword(menu_title, special_keywords):
+                            hits.append(
+                                SpecialMenuHit(
+                                    menu_name=menu_title,
+                                    date_label=date_label,
+                                    cantine_name=cantine_name,
+                                )
+                            )
+
+    return hits
+
+
+def _current_week_monday_iso(timezone_name: str, week_offset_weeks: int = 0) -> str:
     now = datetime.now(ZoneInfo(timezone_name))
-    monday = now.date() - timedelta(days=now.weekday())
+    monday = now.date() - timedelta(days=now.weekday()) + timedelta(weeks=week_offset_weeks)
     return monday.isoformat()
 
 
-def _build_week_url(base_url: str, timezone_name: str) -> str:
+def _build_week_url(
+    base_url: str,
+    timezone_name: str,
+    week_offset_weeks: int = 0,
+) -> str:
     """Build a weekly URL using current week Monday date.
 
     Supported patterns:
@@ -148,7 +241,7 @@ def _build_week_url(base_url: str, timezone_name: str) -> str:
     - Existing date query: ...?date=YYYY-MM-DD&id=...
     If neither is present, the URL is returned unchanged.
     """
-    week_monday = _current_week_monday_iso(timezone_name)
+    week_monday = _current_week_monday_iso(timezone_name, week_offset_weeks)
 
     if "{week_monday}" in base_url:
         return base_url.replace("{week_monday}", week_monday)
@@ -163,7 +256,10 @@ def _build_week_url(base_url: str, timezone_name: str) -> str:
     return urlunparse(parsed._replace(query=updated_query))
 
 
-def find_special_menus_for_week(config: BotConfig) -> list[SpecialMenuHit]:
+def find_special_menus_for_week(
+    config: BotConfig,
+    week_offset_weeks: int = 0,
+) -> list[SpecialMenuHit]:
     if not config.special_keywords:
         return []
 
@@ -179,19 +275,29 @@ def find_special_menus_for_week(config: BotConfig) -> list[SpecialMenuHit]:
         if not _is_allowed_cantine(cantine_name, config.cantine_names):
             continue
 
-        url = _build_week_url(base_url, config.timezone)
+        url = _build_week_url(base_url, config.timezone, week_offset_weeks)
 
         try:
-            response = requests.get(url, timeout=30)
+            response = requests.get(url, headers=HTTP_HEADERS, timeout=30)
             response.raise_for_status()
         except requests.RequestException:
             continue
 
-        for hit in _extract_hits_from_html(
+        html_hits = _extract_hits_from_html(
             html_text=response.text,
             cantine_name=cantine_name,
             special_keywords=config.special_keywords,
-        ):
+        )
+        if not html_hits:
+            html_hits = _extract_hits_from_eth_api(
+                html_text=response.text,
+                cantine_name=cantine_name,
+                special_keywords=config.special_keywords,
+                timezone_name=config.timezone,
+                week_offset_weeks=week_offset_weeks,
+            )
+
+        for hit in html_hits:
             key = (hit.menu_name, hit.date_label, hit.cantine_name)
             if key in seen:
                 continue

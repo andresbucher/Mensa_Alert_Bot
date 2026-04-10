@@ -31,6 +31,14 @@ In Telegram, open the chat/group where alerts should go and run:
 - `/setchat` to store that chat id in `bot_state.json`
 - `/testalert` to verify messaging
 - `/runcheck` to parse local `.html` files immediately and send matching alerts
+- `/runcheck -1` to check last week (useful if you missed the week)
+
+### Keyword config and GitHub
+
+- `.env` is intentionally ignored by git (see `.gitignore`), so changes there do not appear in GitHub Desktop.
+- Keep real values in your local `.env` (tokens, chat id, your private keyword list).
+- Keep only templates/defaults in `.env.example` if you want tracked config examples in git.
+- For GitHub Actions, set `SPECIAL_KEYWORDS` in repository Secrets (not in `.env`).
 
 ## 4) Weekly schedule
 
