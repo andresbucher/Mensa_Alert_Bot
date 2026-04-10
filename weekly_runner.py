@@ -20,6 +20,10 @@ logging.getLogger("telegram").setLevel(logging.INFO)
 LOGGER = logging.getLogger(__name__)
 
 
+def _env_flag(name: str, default: str = "0") -> bool:
+    return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
+
+
 def format_alert(menu_name: str, date_label: str, cantine_name: str) -> str:
     return (
         f"{menu_name.upper()} ALERT\n"
@@ -53,12 +57,22 @@ async def _send_weekly_alerts() -> None:
     if config.default_chat_id is None:
         raise RuntimeError("ALERT_CHAT_ID is required for weekly_runner.py")
 
+    bot = Bot(token=config.telegram_bot_token)
     hits = find_special_menus_for_week(config)
     if not hits:
         LOGGER.info("No matching special menus found.")
+        if _env_flag("NOTIFY_ON_NO_HITS", "1"):
+            now_local = datetime.now(ZoneInfo(config.timezone)).strftime("%Y-%m-%d %H:%M")
+            await bot.send_message(
+                chat_id=config.default_chat_id,
+                text=(
+                    "Mensa check executed.\n"
+                    f"Time: {now_local} ({config.timezone})\n"
+                    "Result: no keyword matches this run."
+                ),
+            )
         return
 
-    bot = Bot(token=config.telegram_bot_token)
     for hit in hits:
         await bot.send_message(
             chat_id=config.default_chat_id,

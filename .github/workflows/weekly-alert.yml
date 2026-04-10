@@ -18,6 +18,7 @@ jobs:
       CHECK_TIME: ${{ vars.CHECK_TIME || '08:00' }}
       TIMEZONE: ${{ vars.TIMEZONE || 'Europe/Zurich' }}
       RUN_WINDOW_MINUTES: ${{ vars.RUN_WINDOW_MINUTES || '60' }}
+      NOTIFY_ON_NO_HITS: ${{ vars.NOTIFY_ON_NO_HITS || '1' }}
       FORCE_RUN: ${{ github.event_name == 'workflow_dispatch' && '1' || '0' }}
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
     steps:
