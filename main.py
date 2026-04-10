@@ -96,7 +96,7 @@ async def weekly_check(context: ContextTypes.DEFAULT_TYPE) -> None:
             ),
         )
 
-    LOGGER.info("Weekly check is finished: sent %s alert(s).", len(hits))
+    LOGGER.info("Weekly check finished: sent %s alert(s).", len(hits))
 
 
 def main() -> None:
