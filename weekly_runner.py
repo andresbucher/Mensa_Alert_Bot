@@ -2,6 +2,7 @@ import asyncio
 import logging
 import os
 from datetime import datetime
+import re
 from zoneinfo import ZoneInfo
 
 from telegram import Bot
@@ -20,16 +21,31 @@ logging.getLogger("telegram").setLevel(logging.INFO)
 LOGGER = logging.getLogger(__name__)
 
 
+DATE_LABEL_PATTERN = re.compile(r"^(?P<weekday>[^\s]+)\s*\((?P<iso>\d{4}-\d{2}-\d{2})\)$")
+
+
 def _env_flag(name: str, default: str = "0") -> bool:
     return os.getenv(name, default).strip().lower() in {"1", "true", "yes", "on"}
 
 
 def format_alert(menu_name: str, date_label: str, cantine_name: str) -> str:
+    display_date = _format_date_label_german(date_label)
     return (
         f"{menu_name.upper()} ALERT\n"
-        f"Date: {date_label}\n"
-        f"Cantine: {cantine_name}"
+        f"Datum: {display_date}\n"
+        f"Mensa: {cantine_name}"
     )
+
+
+def _format_date_label_german(date_label: str) -> str:
+    match = DATE_LABEL_PATTERN.match(date_label.strip())
+    if not match:
+        return date_label
+
+    weekday = match.group("weekday")
+    iso_date = match.group("iso")
+    dt = datetime.strptime(iso_date, "%Y-%m-%d")
+    return f"{weekday}, {dt.strftime('%d.%m.%Y')}"
 
 
 def _should_run_now() -> bool:
