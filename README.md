@@ -5,7 +5,7 @@ It can also run online with GitHub Actions every Monday morning.
 
 ## 1) Security first
 
-You previously used a hardcoded bot token. Revoke it in BotFather and create a new token.
+Get a Token from @BotFather via Telegram and also get the ChatID so you can add it as an action variable in the Githuv Settings
 
 ## 2) Local setup
 
@@ -99,7 +99,7 @@ Use this when you only need weekly checks and alerts.
 
 - `TELEGRAM_BOT_TOKEN`
 - `ALERT_CHAT_ID`
-- `SPECIAL_KEYWORDS` (example: `avocado chicken burger`)
+- `SPECIAL_KEYWORDS` (example: `Crispy Beef`)
 - `CANTINE_NAMES` (example: `Polyterasse`)
 - `CANTINE_SOURCES` (example: `Polyterasse|https://...date={week_monday}&id=9`) 
 
