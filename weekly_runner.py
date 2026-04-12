@@ -31,7 +31,7 @@ def _env_flag(name: str, default: str = "0") -> bool:
 def format_alert(menu_name: str, date_label: str, cantine_name: str) -> str:
     display_date = _format_date_label_german(date_label)
     return (
-        f"{menu_name.upper()} ALERT\n"
+        f"🚨🚨{menu_name.upper()} ALERT🚨🚨\n"
         f"Datum: {display_date}\n"
         f"Mensa: {cantine_name}"
     )
