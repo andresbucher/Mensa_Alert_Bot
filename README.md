@@ -3,7 +3,7 @@
 This starter runs a Telegram bot continuously and executes a weekly menu check job.
 It can also run online with GitHub Actions every Monday morning.
 
-## 1) Security first
+## 1) First Step to Setup a Groupchat
 
 Get a Token from @BotFather via Telegram and also get the ChatID so you can add it as an action variable in the Githuv Settings
 
