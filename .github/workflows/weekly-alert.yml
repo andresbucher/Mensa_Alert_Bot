@@ -2,7 +2,7 @@ name: Weekly Mensa Alert
 
 on:
   schedule:
-    - cron: "0 * * * 1"
+    - cron: "5 8 * * Mon"
   workflow_dispatch:
 
 jobs:
